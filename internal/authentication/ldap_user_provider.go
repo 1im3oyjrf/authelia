@@ -1093,7 +1093,6 @@ attributes:
 func (p *LDAPUserProvider) resolveAllUsersFilter() string {
 	switch p.config.Implementation {
 	case schema.LDAPImplementationActiveDirectory:
-		// Active Directory uses 'user' object class, and we should filter out computer accounts.
 		return "(&(objectClass=user)(!(objectClass=computer)))"
 	case schema.LDAPImplementationFreeIPA, schema.LDAPImplementationRFC2307bis:
 		return "(objectClass=inetOrgPerson)"

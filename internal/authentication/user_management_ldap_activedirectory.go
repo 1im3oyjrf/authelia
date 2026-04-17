@@ -466,6 +466,8 @@ func (a *ActiveDirectoryUserManagement) replaceAttributeIfPresent(req *ldap.Modi
 		} else {
 			req.Replace(ldapAttr, v)
 		}
+	case int, int32, int64, float32, float64:
+		req.Replace(ldapAttr, []string{fmt.Sprintf("%v", v)})
 	}
 }
 
@@ -491,6 +493,8 @@ func (a *ActiveDirectoryUserManagement) addAttributeIfPresent(req *ldap.AddReque
 		}
 
 		req.Attribute(ldapAttr, v)
+	case int, int32, int64, float32, float64:
+		req.Attribute(ldapAttr, []string{fmt.Sprintf("%v", v)})
 	}
 }
 
@@ -530,10 +534,9 @@ func (a *ActiveDirectoryUserManagement) normalizeExtraAttributes(value interface
 		}
 
 		return BooleanValueFalse
-	case int, int32, int64:
-		return fmt.Sprintf("%d", v)
-	case float32, float64:
-		return fmt.Sprintf("%f", v)
+	case int, int32, int64, float32, float64:
+		// Return numeric types as-is for proper LDAP integer/numeric attribute handling.
+		return value
 	default:
 		return value
 	}

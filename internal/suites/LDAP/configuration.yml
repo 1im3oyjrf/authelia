@@ -126,11 +126,11 @@ authentication_backend:
       zoneinfo: 'zoneinfo'
 
       extra:
-        employeeNumber:
-          name: 'employee_id'
+        autheliaEmployeeNumber:
+          name: 'employee_number'
           multi_valued: false
-          value_type: 'string'
-        employeeType:
+          value_type: 'integer'
+        autheliaEmployeeType:
           name: 'employee_type'
           multi_valued: false
           value_type: 'string'

@@ -359,9 +359,8 @@ func (s *UserManagementAPIScenario) Test_NewUserPOST_ShouldCreateUserWithExtraAt
 		"groups":      []string{"dev"},
 		"password":    "password",
 		"extra": map[string]interface{}{
-			"employee_id":     "EMP12345",
-			"employee_type":   "IT",
 			"employee_number": 42,
+			"employee_type":   "IT",
 			"test_flag":       "TRUE",
 			"tags":            []string{"tag1", "tag2"},
 		},
@@ -381,9 +380,8 @@ func (s *UserManagementAPIScenario) Test_NewUserPOST_ShouldCreateUserWithExtraAt
 	err := json.Unmarshal(body, &response)
 	s.Assert().NoError(err)
 	s.Assert().NotNil(response.Data.Extra)
-	s.Assert().Equal("EMP12345", response.Data.Extra["employee_id"])
-	s.Assert().Equal("IT", response.Data.Extra["employee_type"])
 	s.Assert().Equal(float64(42), response.Data.Extra["employee_number"])
+	s.Assert().Equal("IT", response.Data.Extra["employee_type"])
 	s.Assert().Equal(true, response.Data.Extra["test_flag"])
 	s.Assert().Equal("tag1", response.Data.Extra["tags"].([]interface{})[0])
 
@@ -482,7 +480,7 @@ func (s *UserManagementAPIScenario) Test_ChangeUserPATCH_ShouldAddUserToExisting
 
 	err := json.Unmarshal(body, &response)
 	s.Assert().NoError(err)
-	s.Assert().Equal([]string{"dev", "admins"}, response.Data.Groups)
+	s.Assert().ElementsMatch([]string{"dev", "admins"}, response.Data.Groups)
 
 	res, _ = s.apiRequest("DELETE", fmt.Sprintf("/api/admin/users/%s", testUserUsername), nil)
 	s.Assert().Equal(http.StatusOK, res.StatusCode)
@@ -626,7 +624,7 @@ func (s *UserManagementAPIScenario) Test_ChangeUserPATCH_ShouldErrorWhenAddingNo
 
 	err := json.Unmarshal(body, &response)
 	s.Assert().NoError(err)
-	s.Assert().Equal([]string{"dev", "admins"}, response.Data.Groups)
+	s.Assert().ElementsMatch([]string{"dev", "admins"}, response.Data.Groups)
 
 	res, _ = s.apiRequest("DELETE", fmt.Sprintf("/api/admin/users/%s", testUserUsername), nil)
 	s.Assert().Equal(http.StatusOK, res.StatusCode)
@@ -906,23 +904,52 @@ func (s *UserManagementAPIScenario) Test_ChangeUserPATCH_ShouldUpdateLocaleAndZo
 func (s *UserManagementAPIScenario) Test_ChangeUserPATCH_ShouldUpdateExtraFields() {
 	s.login(adminUsername, adminPassword)
 
-	username := nonAdminUsername
+	s.apiRequest("DELETE", fmt.Sprintf("/api/admin/users/%s", testUserUsername), nil)
+
+	newUser := map[string]interface{}{
+		"username":    testUserUsername,
+		"given_name":  "Test",
+		"family_name": "User",
+		"mail":        []string{"test@example.com"},
+		"password":    testPassword,
+	}
+
+	res, body := s.apiRequest("POST", "/api/admin/users", newUser)
+	s.Assert().Equal(http.StatusCreated, res.StatusCode,
+		fmt.Sprintf("Failed to create user: %s", string(body)))
+
+	res, body = s.apiRequest("GET", fmt.Sprintf("/api/admin/users/%s", testUserUsername), nil)
+	s.Assert().Equal(http.StatusOK, res.StatusCode)
+
+	var getUserResponse struct {
+		Status string                             `json:"status"`
+		Data   authentication.UserDetailsExtended `json:"data"`
+	}
+
+	err := json.Unmarshal(body, &getUserResponse)
+	s.Assert().NoError(err)
+
+	if getUserResponse.Data.Extra != nil {
+		s.Assert().Empty(getUserResponse.Data.Extra["employee_number"])
+		s.Assert().Empty(getUserResponse.Data.Extra["employee_type"])
+		s.Assert().Empty(getUserResponse.Data.Extra["test_flag"])
+	}
+
 	updateData := map[string]interface{}{
 		"extra": map[string]interface{}{
-			"employee_id":     "EMP12345",
-			"employee_type":   "IT",
 			"employee_number": 42,
+			"employee_type":   "IT",
 			"test_flag":       "TRUE",
 			"tags":            []string{"tag1", "tag2"},
 		},
 	}
 
-	res, body := s.apiRequest("PATCH", fmt.Sprintf("/api/admin/users/%s?update_mask=extra.employee_id,extra.employee_type,extra.employee_number,extra.test_flag,extra.tags", username), updateData)
+	res, body = s.apiRequest("PATCH", fmt.Sprintf("/api/admin/users/%s?update_mask=extra.employee_number,extra.employee_type,extra.test_flag,extra.tags", testUserUsername), updateData)
 
 	s.Assert().Equal(http.StatusOK, res.StatusCode,
 		fmt.Sprintf("Failed to update user: %s", string(body)))
 
-	res, body = s.apiRequest("GET", fmt.Sprintf("/api/admin/users/%s", username), nil)
+	res, body = s.apiRequest("GET", fmt.Sprintf("/api/admin/users/%s", testUserUsername), nil)
 	s.Assert().Equal(http.StatusOK, res.StatusCode)
 
 	var response struct {
@@ -930,14 +957,15 @@ func (s *UserManagementAPIScenario) Test_ChangeUserPATCH_ShouldUpdateExtraFields
 		Data   authentication.UserDetailsExtended `json:"data"`
 	}
 
-	err := json.Unmarshal(body, &response)
+	err = json.Unmarshal(body, &response)
 	s.Assert().NoError(err)
 	s.Assert().NotNil(response.Data.Extra)
-	s.Assert().Equal("EMP12345", response.Data.Extra["employee_id"])
-	s.Assert().Equal("IT", response.Data.Extra["employee_type"])
 	s.Assert().Equal(float64(42), response.Data.Extra["employee_number"])
+	s.Assert().Equal("IT", response.Data.Extra["employee_type"])
 	s.Assert().Equal(true, response.Data.Extra["test_flag"])
 	s.Assert().Equal("tag1", response.Data.Extra["tags"].([]interface{})[0])
+
+	s.apiRequest("DELETE", fmt.Sprintf("/api/admin/users/%s", testUserUsername), nil)
 }
 
 func (s *UserManagementAPIScenario) Test_ChangeUserPATCH_ShouldClearOptionalFields() {

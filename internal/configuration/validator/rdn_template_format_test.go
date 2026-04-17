@@ -222,11 +222,12 @@ func TestRDNTemplateFormats(t *testing.T) {
 
 func TestRDNTemplateValidation(t *testing.T) {
 	testCases := []struct {
-		name              string
-		ldapAttributes    schema.AuthenticationBackendLDAPAttributes
-		rdnFormat         string
-		shouldHaveErrors  bool
-		expectedErrorText string
+		name               string
+		ldapAttributes     schema.AuthenticationBackendLDAPAttributes
+		requiredAttributes []string
+		rdnFormat          string
+		shouldHaveErrors   bool
+		expectedErrorText  string
 	}{
 		{
 			name: "ValidFieldsWithMapping",
@@ -234,8 +235,9 @@ func TestRDNTemplateValidation(t *testing.T) {
 				GivenName:  "givenName",
 				FamilyName: "sn",
 			},
-			rdnFormat:        "cn=[[ .given_name ]] [[ .family_name ]]",
-			shouldHaveErrors: false,
+			rdnFormat:          "cn=[[ .given_name ]] [[ .family_name ]]",
+			requiredAttributes: []string{"given_name", "family_name"},
+			shouldHaveErrors:   false,
 		},
 		{
 			name: "InvalidFieldWithoutMapping",
@@ -259,7 +261,14 @@ func TestRDNTemplateValidation(t *testing.T) {
 				PhoneNumber:    "telephoneNumber",
 				PhoneExtension: "extension",
 			},
-			rdnFormat:        "cn=[[ .given_name ]] [[ .middle_name ]] [[ .family_name ]],uid=[[ .username ]],mail=[[ index .emails 0 ]]",
+			rdnFormat: "cn=[[ .given_name ]] [[ .middle_name ]] [[ .family_name ]],uid=[[ .username ]],mail=[[ index .mail 0 ]]",
+			requiredAttributes: []string{
+				"given_name",
+				"middle_name",
+				"family_name",
+				"username",
+				"mail",
+			},
 			shouldHaveErrors: false,
 		},
 		{
@@ -285,16 +294,19 @@ func TestRDNTemplateValidation(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			config := &schema.AuthenticationBackend{
-				LDAP: &schema.AuthenticationBackendLDAP{
-					Address:      mustParseAddress("ldap://127.0.0.1"),
-					User:         "cn=admin,dc=example,dc=com",
-					Password:     "password",
-					UsersFilter:  "(&(|({username_attribute}={input})({mail_attribute}={input}))(objectClass=person))",
-					GroupsFilter: "(member={dn})",
-					Attributes:   tc.ldapAttributes,
-					UserManagement: schema.AuthenticationBackendLDAPUserManagement{
-						CreatedUsersRDNFormat: tc.rdnFormat,
+			config := &schema.Configuration{
+				AuthenticationBackend: schema.AuthenticationBackend{
+					LDAP: &schema.AuthenticationBackendLDAP{
+						Address:      mustParseAddress("ldap://127.0.0.1"),
+						User:         "cn=admin,dc=example,dc=com",
+						Password:     "password",
+						UsersFilter:  "(&(|({username_attribute}={input})({mail_attribute}={input}))(objectClass=person))",
+						GroupsFilter: "(member={dn})",
+						Attributes:   tc.ldapAttributes,
+						UserManagement: schema.AuthenticationBackendLDAPUserManagement{
+							CreatedUsersRDNFormat: tc.rdnFormat,
+							RequiredAttributes:    tc.requiredAttributes,
+						},
 					},
 				},
 			}

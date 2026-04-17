@@ -83,6 +83,7 @@ authentication_backend:
         - "person"
         - "organizationalPerson"
         - "user"
+        - "autheliaUserAttributes"
       group_object_classes:
         - "top"
         - "group"
@@ -117,27 +118,19 @@ authentication_backend:
       gender: 'title'
 
       extra:
-        employeeNumber:
-          name: 'employee_id'
-          multi_valued: false
-          value_type: 'string'
-        employeeType:
-          name: 'employee_type'
-          multi_valued: false
-          value_type: 'string'
-        msExchHideFromAddressLists:
-          name: 'test_flag'
-          multi_valued: false
-          value_type: 'boolean'
-        department:
-          name: 'department'
-          multi_valued: false
-          value_type: 'string'
-        info:
+        autheliaEmployeeNumber:
           name: 'employee_number'
           multi_valued: false
           value_type: 'integer'
-        keywords:
+        autheliaEmployeeType:
+          name: 'employee_type'
+          multi_valued: false
+          value_type: 'string'
+        autheliaTestFlag:
+          name: 'test_flag'
+          multi_valued: false
+          value_type: 'boolean'
+        autheliaTags:
           name: 'tags'
           multi_valued: true
           value_type: 'string'
