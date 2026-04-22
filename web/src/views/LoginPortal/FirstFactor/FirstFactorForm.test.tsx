@@ -53,6 +53,10 @@ vi.mock("@views/LoginPortal/FirstFactor/PasskeyForm", () => ({
     default: () => <div data-testid="passkey-form" />,
 }));
 
+vi.mock("@simplewebauthn/browser", () => ({
+    browserSupportsWebAuthn: () => true,
+}));
+
 const defaultProps = {
     disabled: false,
     onAuthenticationStart: vi.fn(),

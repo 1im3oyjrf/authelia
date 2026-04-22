@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import Grid from "@mui/material/Grid";
 import TextField from "@mui/material/TextField";
+import { browserSupportsWebAuthn } from "@simplewebauthn/browser";
 import { BroadcastChannel } from "broadcast-channel";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -68,6 +69,8 @@ const FirstFactorForm = function (props: Props) {
 
     const usernameRef = useRef<HTMLInputElement | null>(null);
     const passwordRef = useRef<HTMLInputElement | null>(null);
+
+    const isWebAuthnSupported = browserSupportsWebAuthn();
 
     const focusUsername = useCallback(() => {
         if (usernameRef.current === null) return;
@@ -255,7 +258,7 @@ const FirstFactorForm = function (props: Props) {
                             onChange={(v) => setUsername(v.target.value)}
                             onFocus={() => setUsernameError(false)}
                             autoCapitalize="none"
-                            autoComplete="username"
+                            autoComplete="username webauthn"
                             onKeyDown={handleUsernameKeyDown}
                         />
                     </Grid>
@@ -361,7 +364,7 @@ const FirstFactorForm = function (props: Props) {
                             {translate("Sign in")}
                         </Button>
                     </Grid>
-                    {props.passkeyLogin ? (
+                    {props.passkeyLogin && isWebAuthnSupported ? (
                         <PasskeyForm
                             disabled={props.disabled}
                             rememberMe={props.rememberMe}
