@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useEffectEvent, useState } from "react";
 
 import { Button, CircularProgress, Divider, Typography } from "@mui/material";
 import Grid from "@mui/material/Grid";
@@ -34,117 +34,97 @@ const PasskeyForm = function (props: Props) {
 
     const [loading, setLoading] = useState(false);
 
-    const onSignInErrorCallback = useRef(props.onAuthenticationError).current;
+    const handleSignIn = useEffectEvent(async (conditionalMediation: boolean) => {
+        if (loading) return;
 
-    const handleAuthenticationStart = useCallback(() => {
-        props.onAuthenticationStart();
-        setLoading(true);
-    }, [props]);
+        const startUI = () => {
+            props.onAuthenticationStart();
+            setLoading(true);
+        };
+        const stopUI = () => {
+            props.onAuthenticationStop();
+            setLoading(false);
+        };
+        const fail = (message: string) => {
+            if (conditionalMediation) return;
+            stopUI();
+            props.onAuthenticationError(new Error(translate(message)));
+        };
 
-    const handleAuthenticationStop = useCallback(() => {
-        props.onAuthenticationStop();
-        setLoading(false);
-    }, [props]);
+        if (!conditionalMediation) startUI();
 
-    const handleSignIn = useCallback(
-        async (conditionalMediation: boolean) => {
-            if (loading) {
+        const signal = getSignal();
+
+        try {
+            const optionsStatus = await getWebAuthnPasskeyOptions(conditionalMediation, signal);
+
+            if (signal.aborted) return;
+
+            if (optionsStatus.status !== 200 || optionsStatus.options == null) {
+                fail("Failed to initiate security key sign in process");
                 return;
             }
 
-            handleAuthenticationStart();
+            const result = await getWebAuthnResult(optionsStatus.options, conditionalMediation);
 
-            const signal = getSignal();
+            if (signal.aborted) return;
 
-            try {
-                const optionsStatus = await getWebAuthnPasskeyOptions(conditionalMediation, signal);
-
-                if (optionsStatus.status !== 200 || optionsStatus.options == null) {
-                    handleAuthenticationStop();
-                    onSignInErrorCallback(new Error(translate("Failed to initiate security key sign in process")));
-
-                    return;
-                }
-
-                const result = await getWebAuthnResult(optionsStatus.options, conditionalMediation);
-
-                if (signal.aborted) return;
-
-                if (result.result !== AssertionResult.Success) {
-                    handleAuthenticationStop();
-
-                    onSignInErrorCallback(new Error(translate(AssertionResultFailureString(result.result))));
-
-                    return;
-                }
-
-                if (result.response == null) {
-                    onSignInErrorCallback(
-                        new Error(translate("The browser did not respond with the expected attestation data")),
-                    );
-                    handleAuthenticationStop();
-
-                    return;
-                }
-
-                const response = await postWebAuthnPasskeyResponse(
-                    result.response,
-                    props.rememberMe,
-                    redirectionURL,
-                    requestMethod,
-                    flowID,
-                    flow,
-                    subflow,
-                    signal,
-                );
-
-                handleAuthenticationStop();
-
-                if (response.data.status === "OK" && response.status === 200) {
-                    props.onAuthenticationSuccess(response.data.data ? response.data.data.redirect : undefined);
-                    return;
-                }
-
-                onSignInErrorCallback(new Error(translate("The server rejected the security key")));
-            } catch (err) {
-                handleAuthenticationStop();
-
-                if (axios.isCancel(err)) return;
-                console.error(err);
-                onSignInErrorCallback(new Error(translate("Failed to initiate security key sign in process")));
+            if (result.result !== AssertionResult.Success) {
+                fail(AssertionResultFailureString(result.result));
+                return;
             }
-        },
-        [
-            getSignal,
-            loading,
-            handleAuthenticationStart,
-            props,
-            redirectionURL,
-            requestMethod,
-            flowID,
-            flow,
-            subflow,
-            handleAuthenticationStop,
-            onSignInErrorCallback,
-            translate,
-        ],
-    );
+
+            if (result.response == null) {
+                fail("The browser did not respond with the expected attestation data");
+                return;
+            }
+
+            if (conditionalMediation) startUI();
+
+            const response = await postWebAuthnPasskeyResponse(
+                result.response,
+                props.rememberMe,
+                redirectionURL,
+                requestMethod,
+                flowID,
+                flow,
+                subflow,
+                signal,
+            );
+
+            stopUI();
+
+            if (response.data.status === "OK" && response.status === 200) {
+                props.onAuthenticationSuccess(response.data.data ? response.data.data.redirect : undefined);
+                return;
+            }
+
+            props.onAuthenticationError(new Error(translate("The server rejected the security key")));
+        } catch (err) {
+            if (axios.isCancel(err)) return;
+            console.error(err);
+            fail("Failed to initiate security key sign in process");
+        }
+    });
 
     useEffect(() => {
         let cancelled = false;
 
-        browserSupportsWebAuthnAutofill()
-            .then((supported) => {
-                if (!cancelled && supported) {
-                    handleSignIn(true).catch(console.error);
-                }
-            })
-            .catch(console.error);
+        (async () => {
+            try {
+                const supported = await browserSupportsWebAuthnAutofill();
+                if (cancelled || !supported) return;
+                await handleSignIn(true);
+            } catch (err) {
+                if (axios.isCancel(err)) return;
+                console.error(err);
+            }
+        })();
 
         return () => {
             cancelled = true;
         };
-    }, [handleSignIn]);
+    }, []);
 
     return (
         <Fragment>

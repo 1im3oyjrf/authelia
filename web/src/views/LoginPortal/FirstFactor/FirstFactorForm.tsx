@@ -258,7 +258,7 @@ const FirstFactorForm = function (props: Props) {
                             onChange={(v) => setUsername(v.target.value)}
                             onFocus={() => setUsernameError(false)}
                             autoCapitalize="none"
-                            autoComplete="username webauthn"
+                            autoComplete={props.passkeyLogin ? "username webauthn" : "username"}
                             onKeyDown={handleUsernameKeyDown}
                         />
                     </Grid>
@@ -276,7 +276,7 @@ const FirstFactorForm = function (props: Props) {
                             onChange={(v) => setPassword(v.target.value)}
                             onFocus={() => setPasswordError(false)}
                             type={showPassword ? "text" : "password"}
-                            autoComplete="current-password"
+                            autoComplete={props.passkeyLogin ? "current-password webauthn" : "current-password"}
                             onKeyDown={handlePasswordKeyDown}
                             onKeyUp={handlePasswordKeyUp}
                             slotProps={{
