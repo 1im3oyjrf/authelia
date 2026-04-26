@@ -1,4 +1,4 @@
-import { KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { KeyboardEvent, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
@@ -55,7 +55,7 @@ const FirstFactorForm = function (props: Props) {
     const userCode = useUserCode();
     const { createErrorNotification } = useNotifications();
 
-    const loginChannel = useMemo(() => new BroadcastChannel<boolean>("login"), []);
+    const loginChannelRef = useRef<BroadcastChannel<boolean> | null>(null);
 
     const [rememberMe, setRememberMe] = useState(false);
     const [username, setUsername] = useState("");
@@ -89,13 +89,25 @@ const FirstFactorForm = function (props: Props) {
         return () => clearTimeout(timeout);
     }, [focusUsername]);
 
+    const onChannelMessage = useEffectEvent((authenticated: boolean) => {
+        if (authenticated) {
+            props.onChannelStateChange();
+        }
+    });
+
     useEffect(() => {
-        loginChannel.addEventListener("message", (authenticated) => {
-            if (authenticated) {
-                props.onChannelStateChange();
-            }
-        });
-    }, [loginChannel, redirectionURL, props]);
+        const channel = new BroadcastChannel<boolean>("login");
+        loginChannelRef.current = channel;
+
+        const handler = (authenticated: boolean) => onChannelMessage(authenticated);
+        channel.addEventListener("message", handler);
+
+        return () => {
+            channel.removeEventListener("message", handler);
+            void channel.close();
+            loginChannelRef.current = null;
+        };
+    }, []);
 
     const disabled = props.disabled;
 
@@ -103,7 +115,7 @@ const FirstFactorForm = function (props: Props) {
         setRememberMe(!rememberMe);
     };
 
-    const handleSignIn = useCallback(async () => {
+    const handleSignIn = useEffectEvent(async () => {
         if (username === "" || password === "") {
             if (username === "") {
                 setUsernameError(true);
@@ -134,7 +146,7 @@ const FirstFactorForm = function (props: Props) {
 
             setLoading(false);
 
-            await loginChannel.postMessage(true);
+            await loginChannelRef.current?.postMessage(true);
             props.onAuthenticationSuccess(res ? res.redirect : undefined);
         } catch (err) {
             console.error(err);
@@ -144,22 +156,7 @@ const FirstFactorForm = function (props: Props) {
             setPassword("");
             focusPassword();
         }
-    }, [
-        username,
-        password,
-        props,
-        rememberMe,
-        redirectionURL,
-        requestMethod,
-        flowID,
-        flow,
-        subflow,
-        userCode,
-        loginChannel,
-        createErrorNotification,
-        translate,
-        focusPassword,
-    ]);
+    });
 
     const handleResetPasswordClick = () => {
         if (props.resetPassword) {
@@ -171,74 +168,59 @@ const FirstFactorForm = function (props: Props) {
         }
     };
 
-    const handleUsernameKeyDown = useCallback(
-        (event: KeyboardEvent<HTMLDivElement>) => {
-            if (event.key === "Enter") {
-                if (!username.length) {
-                    setUsernameError(true);
-                } else if (username.length && password.length) {
-                    handleSignIn().catch(console.error);
-                } else {
-                    setUsernameError(false);
-                    focusPassword();
-                }
+    const handleUsernameKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+        if (event.key !== "Enter") return;
+        if (!username.length) {
+            setUsernameError(true);
+        } else if (password.length) {
+            handleSignIn().catch(console.error);
+        } else {
+            setUsernameError(false);
+            focusPassword();
+        }
+    };
+
+    const handlePasswordKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+        if (event.key !== "Enter") return;
+        if (!username.length) {
+            focusUsername();
+        } else if (!password.length) {
+            focusPassword();
+        }
+        handleSignIn().catch(console.error);
+        event.preventDefault();
+    };
+
+    const handlePasswordKeyUp = (event: KeyboardEvent<HTMLDivElement>) => {
+        if (password.length <= 1) {
+            setPasswordCapsLock(false);
+            setPasswordCapsLockPartial(false);
+
+            if (password.length === 0) {
+                return;
             }
-        },
-        [focusPassword, handleSignIn, password.length, username.length],
-    );
+        }
 
-    const handlePasswordKeyDown = useCallback(
-        (event: KeyboardEvent<HTMLDivElement>) => {
-            if (event.key === "Enter") {
-                if (!username.length) {
-                    focusUsername();
-                } else if (!password.length) {
-                    focusPassword();
-                }
-                handleSignIn().catch(console.error);
-                event.preventDefault();
-            }
-        },
-        [focusPassword, focusUsername, handleSignIn, password.length, username.length],
-    );
+        const modified = IsCapsLockModified(event);
 
-    const handlePasswordKeyUp = useCallback(
-        (event: KeyboardEvent<HTMLDivElement>) => {
-            if (password.length <= 1) {
-                setPasswordCapsLock(false);
-                setPasswordCapsLockPartial(false);
+        if (modified === null) return;
 
-                if (password.length === 0) {
-                    return;
-                }
-            }
+        if (modified) {
+            setPasswordCapsLock(true);
+        } else {
+            setPasswordCapsLockPartial(true);
+        }
+    };
 
-            const modified = IsCapsLockModified(event);
-
-            if (modified === null) return;
-
-            if (modified) {
-                setPasswordCapsLock(true);
-            } else {
-                setPasswordCapsLockPartial(true);
-            }
-        },
-        [password.length],
-    );
-
-    const handleRememberMeKeyDown = useCallback(
-        (event: KeyboardEvent<HTMLButtonElement>) => {
-            if (event.key === "Enter") {
-                if (!username.length) {
-                    focusUsername();
-                } else if (!password.length) {
-                    focusPassword();
-                }
-                handleSignIn().catch(console.error);
-            }
-        },
-        [focusPassword, focusUsername, handleSignIn, password.length, username.length],
-    );
+    const handleRememberMeKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+        if (event.key !== "Enter") return;
+        if (!username.length) {
+            focusUsername();
+        } else if (!password.length) {
+            focusPassword();
+        }
+        handleSignIn().catch(console.error);
+    };
 
     return (
         <LoginLayout id="first-factor-stage" title={translate("Sign in")}>

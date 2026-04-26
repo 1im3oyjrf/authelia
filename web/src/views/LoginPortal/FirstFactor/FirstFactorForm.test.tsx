@@ -14,7 +14,9 @@ vi.mock("react-router-dom", async () => {
 vi.mock("broadcast-channel", () => {
     class MockBroadcastChannel {
         addEventListener = vi.fn();
+        removeEventListener = vi.fn();
         postMessage = vi.fn();
+        close = vi.fn();
     }
     return { BroadcastChannel: MockBroadcastChannel };
 });
