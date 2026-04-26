@@ -1,4 +1,4 @@
-import { KeyboardEvent, useActionState, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { KeyboardEvent, useActionState, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
@@ -31,18 +31,54 @@ import { IsCapsLockModified } from "@services/CapsLock";
 import { postFirstFactor } from "@services/Password";
 import PasskeyForm from "@views/LoginPortal/FirstFactor/PasskeyForm";
 
+const isWebAuthnSupported = browserSupportsWebAuthn();
+
 export interface Props {
-    disabled: boolean;
     passkeyLogin: boolean;
     rememberMe: boolean;
     resetPassword: boolean;
     resetPasswordCustomURL: string;
 
-    onAuthenticationStart: () => void;
-    onAuthenticationStop: () => void;
     onAuthenticationSuccess: (_redirectURL: string | undefined) => void;
     onChannelStateChange: () => void;
 }
+
+interface PasswordVisibilityToggleProps {
+    visible: boolean;
+    onVisibilityChange: (_visible: boolean) => void;
+}
+
+const PasswordVisibilityToggle = function ({ onVisibilityChange, visible }: PasswordVisibilityToggleProps) {
+    return (
+        <InputAdornment position="end">
+            <IconButton
+                aria-label="toggle password visibility"
+                edge="end"
+                size="large"
+                onMouseDown={() => onVisibilityChange(true)}
+                onMouseUp={() => onVisibilityChange(false)}
+                onMouseLeave={() => onVisibilityChange(false)}
+                onTouchStart={() => onVisibilityChange(true)}
+                onTouchEnd={() => onVisibilityChange(false)}
+                onTouchCancel={() => onVisibilityChange(false)}
+                onKeyDown={(e) => {
+                    if (e.key === " ") {
+                        onVisibilityChange(true);
+                        e.preventDefault();
+                    }
+                }}
+                onKeyUp={(e) => {
+                    if (e.key === " ") {
+                        onVisibilityChange(false);
+                        e.preventDefault();
+                    }
+                }}
+            >
+                {visible ? <Visibility /> : <VisibilityOff />}
+            </IconButton>
+        </InputAdornment>
+    );
+};
 
 const FirstFactorForm = function (props: Props) {
     const { t: translate } = useTranslation();
@@ -55,6 +91,7 @@ const FirstFactorForm = function (props: Props) {
     const { createErrorNotification } = useNotifications();
 
     const loginChannelRef = useRef<BroadcastChannel<boolean> | null>(null);
+    const passwordRef = useRef<HTMLInputElement | null>(null);
 
     const [rememberMe, setRememberMe] = useState(false);
     const [username, setUsername] = useState("");
@@ -64,28 +101,7 @@ const FirstFactorForm = function (props: Props) {
     const [passwordCapsLock, setPasswordCapsLock] = useState(false);
     const [passwordCapsLockPartial, setPasswordCapsLockPartial] = useState(false);
     const [passwordError, setPasswordError] = useState(false);
-
-    const usernameRef = useRef<HTMLInputElement | null>(null);
-    const passwordRef = useRef<HTMLInputElement | null>(null);
-
-    const isWebAuthnSupported = browserSupportsWebAuthn();
-
-    const focusUsername = useCallback(() => {
-        if (usernameRef.current === null) return;
-
-        usernameRef.current.focus();
-    }, [usernameRef]);
-
-    const focusPassword = useCallback(() => {
-        if (passwordRef.current === null) return;
-
-        passwordRef.current.focus();
-    }, [passwordRef]);
-
-    useEffect(() => {
-        const timeout = setTimeout(() => focusUsername(), 10);
-        return () => clearTimeout(timeout);
-    }, [focusUsername]);
+    const [passkeyAuthenticating, setPasskeyAuthenticating] = useState(false);
 
     const onChannelMessage = useEffectEvent((authenticated: boolean) => {
         if (authenticated) {
@@ -107,8 +123,6 @@ const FirstFactorForm = function (props: Props) {
         };
     }, []);
 
-    const disabled = props.disabled;
-
     const handleRememberMeChange = () => {
         setRememberMe((prev) => !prev);
     };
@@ -119,8 +133,6 @@ const FirstFactorForm = function (props: Props) {
             if (password === "") setPasswordError(true);
             return null;
         }
-
-        props.onAuthenticationStart();
 
         try {
             const res = await postFirstFactor(
@@ -140,12 +152,13 @@ const FirstFactorForm = function (props: Props) {
         } catch (err) {
             console.error(err);
             createErrorNotification(translate("Incorrect username or password"));
-            props.onAuthenticationStop();
             setPassword("");
-            focusPassword();
+            passwordRef.current?.focus();
         }
         return null;
     }, null);
+
+    const disabled = isPending || passkeyAuthenticating;
 
     const handleResetPasswordClick = () => {
         if (props.resetPassword) {
@@ -184,12 +197,12 @@ const FirstFactorForm = function (props: Props) {
                 <Grid container spacing={2}>
                     <Grid size={{ xs: 12 }}>
                         <TextField
-                            inputRef={usernameRef}
                             id="username-textfield"
                             name="username"
                             label={translate("Username")}
                             variant="outlined"
                             required
+                            autoFocus
                             value={username}
                             error={usernameError}
                             disabled={disabled}
@@ -220,33 +233,10 @@ const FirstFactorForm = function (props: Props) {
                             slotProps={{
                                 input: {
                                     endAdornment: (
-                                        <InputAdornment position="end">
-                                            <IconButton
-                                                aria-label="toggle password visibility"
-                                                edge="end"
-                                                size="large"
-                                                onMouseDown={() => setShowPassword(true)}
-                                                onMouseUp={() => setShowPassword(false)}
-                                                onMouseLeave={() => setShowPassword(false)}
-                                                onTouchStart={() => setShowPassword(true)}
-                                                onTouchEnd={() => setShowPassword(false)}
-                                                onTouchCancel={() => setShowPassword(false)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === " ") {
-                                                        setShowPassword(true);
-                                                        e.preventDefault();
-                                                    }
-                                                }}
-                                                onKeyUp={(e) => {
-                                                    if (e.key === " ") {
-                                                        setShowPassword(false);
-                                                        e.preventDefault();
-                                                    }
-                                                }}
-                                            >
-                                                {showPassword ? <Visibility /> : <VisibilityOff />}
-                                            </IconButton>
-                                        </InputAdornment>
+                                        <PasswordVisibilityToggle
+                                            visible={showPassword}
+                                            onVisibilityChange={setShowPassword}
+                                        />
                                     ),
                                 },
                             }}
@@ -296,22 +286,22 @@ const FirstFactorForm = function (props: Props) {
                             color="primary"
                             fullWidth={true}
                             endIcon={isPending ? <CircularProgress size={20} /> : null}
-                            disabled={disabled || isPending}
+                            disabled={disabled}
                         >
                             {translate("Sign in")}
                         </Button>
                     </Grid>
                     {props.passkeyLogin && isWebAuthnSupported ? (
                         <PasskeyForm
-                            disabled={props.disabled}
+                            disabled={disabled}
                             rememberMe={props.rememberMe}
                             onAuthenticationError={(err) => createErrorNotification(err.message)}
                             onAuthenticationStart={() => {
                                 setUsername("");
                                 setPassword("");
-                                props.onAuthenticationStart();
+                                setPasskeyAuthenticating(true);
                             }}
-                            onAuthenticationStop={props.onAuthenticationStop}
+                            onAuthenticationStop={() => setPasskeyAuthenticating(false)}
                             onAuthenticationSuccess={props.onAuthenticationSuccess}
                         />
                     ) : null}
