@@ -1,4 +1,4 @@
-import { KeyboardEvent, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { KeyboardEvent, useActionState, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
@@ -8,7 +8,6 @@ import {
     Button,
     Checkbox,
     CircularProgress,
-    FormControl,
     FormControlLabel,
     IconButton,
     InputAdornment,
@@ -65,7 +64,6 @@ const FirstFactorForm = function (props: Props) {
     const [passwordCapsLock, setPasswordCapsLock] = useState(false);
     const [passwordCapsLockPartial, setPasswordCapsLockPartial] = useState(false);
     const [passwordError, setPasswordError] = useState(false);
-    const [loading, setLoading] = useState(false);
 
     const usernameRef = useRef<HTMLInputElement | null>(null);
     const passwordRef = useRef<HTMLInputElement | null>(null);
@@ -112,22 +110,15 @@ const FirstFactorForm = function (props: Props) {
     const disabled = props.disabled;
 
     const handleRememberMeChange = () => {
-        setRememberMe(!rememberMe);
+        setRememberMe((prev) => !prev);
     };
 
-    const handleSignIn = useEffectEvent(async () => {
+    const [, signInAction, isPending] = useActionState<null>(async () => {
         if (username === "" || password === "") {
-            if (username === "") {
-                setUsernameError(true);
-            }
-
-            if (password === "") {
-                setPasswordError(true);
-            }
-            return;
+            if (username === "") setUsernameError(true);
+            if (password === "") setPasswordError(true);
+            return null;
         }
-
-        setLoading(true);
 
         props.onAuthenticationStart();
 
@@ -144,19 +135,17 @@ const FirstFactorForm = function (props: Props) {
                 userCode,
             );
 
-            setLoading(false);
-
             await loginChannelRef.current?.postMessage(true);
             props.onAuthenticationSuccess(res ? res.redirect : undefined);
         } catch (err) {
             console.error(err);
             createErrorNotification(translate("Incorrect username or password"));
-            setLoading(false);
             props.onAuthenticationStop();
             setPassword("");
             focusPassword();
         }
-    });
+        return null;
+    }, null);
 
     const handleResetPasswordClick = () => {
         if (props.resetPassword) {
@@ -166,29 +155,6 @@ const FirstFactorForm = function (props: Props) {
                 navigate(ResetPasswordStep1Route);
             }
         }
-    };
-
-    const handleUsernameKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-        if (event.key !== "Enter") return;
-        if (!username.length) {
-            setUsernameError(true);
-        } else if (password.length) {
-            handleSignIn().catch(console.error);
-        } else {
-            setUsernameError(false);
-            focusPassword();
-        }
-    };
-
-    const handlePasswordKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-        if (event.key !== "Enter") return;
-        if (!username.length) {
-            focusUsername();
-        } else if (!password.length) {
-            focusPassword();
-        }
-        handleSignIn().catch(console.error);
-        event.preventDefault();
     };
 
     const handlePasswordKeyUp = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -212,24 +178,15 @@ const FirstFactorForm = function (props: Props) {
         }
     };
 
-    const handleRememberMeKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-        if (event.key !== "Enter") return;
-        if (!username.length) {
-            focusUsername();
-        } else if (!password.length) {
-            focusPassword();
-        }
-        handleSignIn().catch(console.error);
-    };
-
     return (
         <LoginLayout id="first-factor-stage" title={translate("Sign in")}>
-            <FormControl id={"form-login"}>
+            <form id="form-login" action={signInAction} noValidate>
                 <Grid container spacing={2}>
                     <Grid size={{ xs: 12 }}>
                         <TextField
                             inputRef={usernameRef}
                             id="username-textfield"
+                            name="username"
                             label={translate("Username")}
                             variant="outlined"
                             required
@@ -241,13 +198,13 @@ const FirstFactorForm = function (props: Props) {
                             onFocus={() => setUsernameError(false)}
                             autoCapitalize="none"
                             autoComplete={props.passkeyLogin ? "username webauthn" : "username"}
-                            onKeyDown={handleUsernameKeyDown}
                         />
                     </Grid>
                     <Grid size={{ xs: 12 }}>
                         <TextField
                             inputRef={passwordRef}
                             id="password-textfield"
+                            name="password"
                             label={translate("Password")}
                             variant="outlined"
                             required
@@ -259,7 +216,6 @@ const FirstFactorForm = function (props: Props) {
                             onFocus={() => setPasswordError(false)}
                             type={showPassword ? "text" : "password"}
                             autoComplete={props.passkeyLogin ? "current-password webauthn" : "current-password"}
-                            onKeyDown={handlePasswordKeyDown}
                             onKeyUp={handlePasswordKeyUp}
                             slotProps={{
                                 input: {
@@ -323,7 +279,6 @@ const FirstFactorForm = function (props: Props) {
                                         disabled={disabled}
                                         checked={rememberMe}
                                         onChange={handleRememberMeChange}
-                                        onKeyDown={handleRememberMeKeyDown}
                                         value="rememberMe"
                                         color="primary"
                                     />
@@ -336,12 +291,12 @@ const FirstFactorForm = function (props: Props) {
                     <Grid size={{ xs: 12 }}>
                         <Button
                             id="sign-in-button"
+                            type="submit"
                             variant="contained"
                             color="primary"
                             fullWidth={true}
-                            endIcon={loading ? <CircularProgress size={20} /> : null}
-                            disabled={disabled}
-                            onClick={handleSignIn}
+                            endIcon={isPending ? <CircularProgress size={20} /> : null}
+                            disabled={disabled || isPending}
                         >
                             {translate("Sign in")}
                         </Button>
@@ -383,7 +338,7 @@ const FirstFactorForm = function (props: Props) {
                         </Grid>
                     ) : null}
                 </Grid>
-            </FormControl>
+            </form>
         </LoginLayout>
     );
 };
