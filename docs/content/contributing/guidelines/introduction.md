@@ -29,7 +29,7 @@ Some general guidelines include:
 - It's recommended people wishing to contribute discuss their intended changes prior to contributing
   - This helps avoid people doubling up on contributions
   - This helps avoid conflicts between contributions
-  - This helps avoid contributors wasting their percussion time in a contribution that may not be accepted
+  - This helps avoid contributors wasting their precious limited time in a contribution that may not be accepted
 
 ## Generative AI Guidelines
 
