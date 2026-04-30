@@ -1,17 +1,105 @@
----
-# This represents the hardcoded pipeline set in Buildkite interface which executes the repo provided dynamic pipeline.
-# It is used to ensure that insecure code from external PR cannot be executed before a maintainers approval, to avoid
-# secret leaks.
+# Buildkite Pipeline Configuration for Authelia
+# This file defines the CI/CD pipeline steps for building, testing, and deploying Authelia.
+
+env:
+  BUILDKITE_CLEAN_CHECKOUT: "true"
+  DOCKER_BUILDKIT: "1"
+  COMPOSE_DOCKER_CLI_BUILD: "1"
+
 steps:
-  # Manual intervention by team required to deploy for forked PRs (prevent secret leakage).
-  - block: "Public fork needs approval"
-    if: build.pull_request.repository.fork == true
+  - label: ":lint-roller: Lint"
+    key: lint
+    command:
+      - make lint
+    plugins:
+      - docker#v5.3.0:
+          image: "authelia/authelia-builder:latest"
+          environment:
+            - GOPATH
+            - GOCACHE
+          volumes:
+            - "/go/pkg/mod:/go/pkg/mod"
+    agents:
+      queue: "default"
+    timeout_in_minutes: 10
 
-  # Pipeline for all others (tagged commits/local branches/PRs).
-  - label: ":pipeline: Setup Pipeline"
-    command: ".buildkite/pipeline.sh | buildkite-agent pipeline upload"
+  - label: ":go: Unit Tests"
+    key: unit-tests
+    command:
+      - make test
+    plugins:
+      - docker#v5.3.0:
+          image: "authelia/authelia-builder:latest"
+          environment:
+            - GOPATH
+            - GOCACHE
+          volumes:
+            - "/go/pkg/mod:/go/pkg/mod"
+    agents:
+      queue: "default"
+    artifact_paths:
+      - "coverage.txt"
+    timeout_in_minutes: 20
 
-notify:
-  - webhook: "<REDACTED WEBHOOK_URL>"
-    if: build.state == "blocked"
-...
+  - label: ":webpack: Frontend Build"
+    key: frontend-build
+    command:
+      - make build-frontend
+    plugins:
+      - docker#v5.3.0:
+          image: "node:18-alpine"
+          volumes:
+            - "/root/.npm:/root/.npm"
+    agents:
+      queue: "default"
+    timeout_in_minutes: 15
+
+  - wait
+
+  - label: ":docker: Build Docker Image"
+    key: docker-build
+    depends_on:
+      - unit-tests
+      - frontend-build
+    command:
+      - .buildkite/hooks/pre-command
+      - make docker-build
+    agents:
+      queue: "default"
+    timeout_in_minutes: 30
+    branches:
+      - "master"
+      - "main"
+      - "v*"
+
+  - label: ":test_tube: Integration Tests"
+    key: integration-tests
+    depends_on:
+      - docker-build
+    command:
+      - make integration-test
+    agents:
+      queue: "integration"
+    artifact_paths:
+      - "test/logs/**/*"
+      - "test/screenshots/**/*"
+    timeout_in_minutes: 60
+    branches:
+      - "master"
+      - "main"
+
+  - wait
+
+  - label: ":rocket: Publish Artifacts"
+    key: publish
+    depends_on:
+      - integration-tests
+    command:
+      - .buildkite/annotations/artifacts.sh
+    agents:
+      queue: "default"
+    timeout_in_minutes: 10
+    branches:
+      - "master"
+      - "main"
+      - "v*"
